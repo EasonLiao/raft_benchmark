@@ -1,7 +1,11 @@
 package main
 
-import "github.com/coreos/etcd/raft"
+import (
+  "fmt"
+  "github.com/goraft/raft"
+)
 
 func main() {
-  raft.Hello()
+  raft.SetLogLevel(raft.Debug)
+  fmt.Println("Hello World")
 }
