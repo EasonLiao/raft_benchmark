@@ -105,9 +105,7 @@ func (s *Server) Run(leader string) error {
 
   go s.runBenchmark()
 
-  res := s.httpServer.ListenAndServe()
-  time.Sleep(5000 * time.Millisecond)
-  return res
+  return s.httpServer.ListenAndServe()
 }
 
 func (s *Server) join(leader string) error {
@@ -160,7 +158,7 @@ func (s* Server) runBenchmark() {
   // Execute the command against the Raft server.
   st := time.Now()
   for i:=0; i < s.numTxns; i++ {
-    _, err := s.raftServer.Do(NewPutCommand(i, string("2")))
+    _, err := s.raftServer.Do(NewPutCommand(i, string(make([]byte, s.txnSize, s.txnSize))))
     if err != nil {
       fmt.Println("Error in raft", err)
     }

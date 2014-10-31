@@ -3,22 +3,22 @@ package main
 
 // The key-value database.
 type DB struct {
-  data  map[string]string
+  data  map[int]string
 }
 
 // Creates a new database.
 func NewDB() *DB {
   return &DB{
-    data: make(map[string]string),
+    data: make(map[int]string),
   }
 }
 
 // Retrieves the value for a given key.
-func (db *DB) Get(key string) string {
+func (db *DB) Get(key int) string {
   return db.data[key]
 }
 
 // Sets the value for a given key.
-func (db *DB) Put(key string, value string) {
+func (db *DB) Put(key int, value string) {
   db.data[key] = value
 }

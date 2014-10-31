@@ -25,5 +25,7 @@ func (c *PutCommand) CommandName() string {
 
 // Writes a value to a key.
 func (c *PutCommand) Apply(server raft.Server) (interface{}, error) {
+  db := server.Context().(*DB)
+  db.Put(c.Key, c.Value)
   return nil, nil
 }
