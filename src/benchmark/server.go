@@ -5,10 +5,13 @@ import (
   "encoding/json"
   "fmt"
   "log"
+  "math/rand"
   "github.com/goraft/raft"
   "github.com/gorilla/mux"
   "net/http"
   "time"
+  "io/ioutil"
+  "path/filepath"
 )
 
 type Server struct {
@@ -20,6 +23,7 @@ type Server struct {
   httpServer  *http.Server
   raftServer  raft.Server
   db          *DB
+  leader      bool
 }
 
 func New(path string, host string, port int) *Server {
@@ -30,7 +34,6 @@ func New(path string, host string, port int) *Server {
         router: mux.NewRouter(),
         db:     NewDB(),
   }
-  fmt.Println("NewServer : ", s.connectionString())
   return s
 }
 
@@ -40,7 +43,11 @@ func (s *Server) connectionString() string {
 
 func (s *Server) Run(leader string) error {
   var err error
-  log.Println("Initialize benchmark server: %s", s.path)
+  s.name = fmt.Sprintf("%07x", rand.Int())[0:7]
+  log.Println("Initialize benchmark server: %s", s.name)
+  if err = ioutil.WriteFile(filepath.Join(s.path, "name"), []byte(s.name), 0644); err != nil {
+      panic(err)
+  }
 
   // Initialize and start Raft server.
   transporter := raft.NewHTTPTransporter("/raft", 200*time.Millisecond)
@@ -54,6 +61,18 @@ func (s *Server) Run(leader string) error {
   if leader != "" {
     log.Println("Attempting to join leader:", leader)
     if err := s.join(leader); err != nil {
+      log.Fatal(err)
+      panic(err)
+    }
+    s.leader = false
+  } else {
+    s.leader = true
+    log.Println("Initializing new cluster : ", s.raftServer.Name(), s.connectionString())
+    _, err := s.raftServer.Do(&raft.DefaultJoinCommand{
+      Name:             s.raftServer.Name(),
+      ConnectionString: s.connectionString(),
+    })
+    if err != nil {
       log.Fatal(err)
     }
   }
@@ -70,13 +89,14 @@ func (s *Server) Run(leader string) error {
 
   go s.runBenchmark()
 
-  return s.httpServer.ListenAndServe()
+  res := s.httpServer.ListenAndServe()
+  time.Sleep(5000 * time.Millisecond)
+  return res
 }
 
 func (s *Server) join(leader string) error {
   command := &raft.DefaultJoinCommand{
-    //Name:             s.raftServer.Name(),
-    Name:             s.connectionString(),
+    Name:             s.raftServer.Name(),
     ConnectionString: s.connectionString(),
   }
   var b bytes.Buffer
@@ -94,14 +114,36 @@ func (s *Server) readHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *Server) joinHandler(w http.ResponseWriter, req *http.Request) {
-  fmt.Println("join")
+  fmt.Println("join", req)
+  command := &raft.DefaultJoinCommand{}
+
+  if err := json.NewDecoder(req.Body).Decode(&command); err != nil {
+    http.Error(w, err.Error(), http.StatusInternalServerError)
+    return
+  }
+  if _, err := s.raftServer.Do(command); err != nil {
+    http.Error(w, err.Error(), http.StatusInternalServerError)
+    return
+  }
+  fmt.Println("Join suc!")
 }
 
 func (s* Server) runBenchmark() {
-  fmt.Println("Run benchmark!!!")
-  value := string("12345")
+  if s.leader == false {
+    return
+  }
+  return
+  time.Sleep(10000 * time.Millisecond)
+  fmt.Println("Run benchmark!")
   // Execute the command against the Raft server.
-  s.raftServer.Do(NewPutCommand(0, value))
+  stt := time.Now()
+  for i:=0; i < 10000; i++ {
+    _, err := s.raftServer.Do(NewWriteCommand(string("1"), string("2")))
+    if err != nil {
+      fmt.Println("Error in raft", err)
+    }
+  }
+  fmt.Println("Duration : ", time.Since(stt))
 }
 
 // This is a hack around Gorilla mux not providing the correct net/http
