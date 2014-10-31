@@ -17,6 +17,7 @@ var numTxns int
 var txnSize int
 var numPeers int
 var showInterval int
+var snapshot int64
 
 func init() {
   flag.StringVar(&host, "h", "localhost", "hostname")
@@ -26,6 +27,7 @@ func init() {
   flag.IntVar(&txnSize, "s", 128, "transaction size(bytes)")
   flag.IntVar(&numPeers, "np", 1, "number of peers in cluster")
   flag.IntVar(&showInterval, "int", 3, "the intervals for showing the perf")
+  flag.Int64Var(&snapshot, "snapshot", -1, "the threshold for taking snapshot")
 }
 
 func main() {
@@ -40,6 +42,6 @@ func main() {
     log.Fatalf("Unable to create path: %v", err)
   }
   raft.RegisterCommand(&PutCommand{})
-  server := New(path, host, port, numTxns, txnSize, numPeers, showInterval)
+  server := New(path, host, port, numTxns, txnSize, numPeers, showInterval, snapshot)
   server.Run(join)
 }

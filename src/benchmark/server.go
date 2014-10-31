@@ -28,20 +28,23 @@ type Server struct {
   numPeers    int
   chStart     chan string
   showInterv  int
+  snapshot    int64
 }
 
-func New(path, host string, port, numTxns, txnSize, numPeers, showInterv int) *Server {
+func New(path, host string, port, numTxns, txnSize, numPeers,
+         showInterv int, snapshot int64) *Server {
   s := &Server {
-        host:     host,
-        port:     port,
-        path:     path,
-        router:   mux.NewRouter(),
-        db:       NewDB(),
-        numTxns:  numTxns,
-        txnSize:  txnSize,
-        numPeers: numPeers,
-        chStart:  make(chan string),
-        showInterv:  showInterv,
+        host:       host,
+        port:       port,
+        path:       path,
+        router:     mux.NewRouter(),
+        db:         NewDB(),
+        numTxns:    numTxns,
+        txnSize:    txnSize,
+        numPeers:   numPeers,
+        chStart:    make(chan string),
+        showInterv: showInterv,
+        snapshot:   snapshot,
   }
   return s
 }
@@ -60,7 +63,7 @@ func (s *Server) Run(leader string) error {
   }
   // Initialize and start Raft server.
   transporter := raft.NewHTTPTransporter("/raft", 200*time.Millisecond)
-  s.raftServer, err = raft.NewServer(s.name, s.path, transporter, nil, s.db, "")
+  s.raftServer, err = raft.NewServer(s.name, s.path, transporter, s.db, s.db, "")
   if err != nil {
     log.Fatal(err)
   }
@@ -176,11 +179,18 @@ func (s *Server) HandleFunc(pattern string, handler func(http.ResponseWriter, *h
 
 func (s *Server) showPerf(ticker *time.Ticker) {
   lastPuts := s.db.puts
+  lastSnapshotPuts := s.db.puts
   for {
     <-ticker.C
     curPuts := s.db.puts
     intvThroughput := (curPuts - lastPuts) / s.showInterv
     fmt.Println("Throughput : ", intvThroughput)
     lastPuts = curPuts
+    if s.snapshot > 0 &&
+       int64(curPuts - lastSnapshotPuts) * int64(s.txnSize) >= s.snapshot {
+      log.Printf("Reaches threshold %d bytes, gona take the snapshot.", s.snapshot)
+      s.raftServer.TakeSnapshot()
+      lastSnapshotPuts = curPuts
+    }
   }
 }
