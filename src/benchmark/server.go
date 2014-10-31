@@ -24,15 +24,19 @@ type Server struct {
   raftServer  raft.Server
   db          *DB
   leader      bool
+  numTxns     int
+  txnSize     int
 }
 
-func New(path string, host string, port int) *Server {
+func New(path string, host string, port int, numTxns int, txnSize int) *Server {
   s := &Server {
-        host:   host,
-        port:   port,
-        path:   path,
-        router: mux.NewRouter(),
-        db:     NewDB(),
+        host:     host,
+        port:     port,
+        path:     path,
+        router:   mux.NewRouter(),
+        db:       NewDB(),
+        numTxns:  numTxns,
+        txnSize:  txnSize,
   }
   return s
 }
@@ -48,7 +52,6 @@ func (s *Server) Run(leader string) error {
   if err = ioutil.WriteFile(filepath.Join(s.path, "name"), []byte(s.name), 0644); err != nil {
       panic(err)
   }
-
   // Initialize and start Raft server.
   transporter := raft.NewHTTPTransporter("/raft", 200*time.Millisecond)
   s.raftServer, err = raft.NewServer(s.name, s.path, transporter, nil, s.db, "")
@@ -60,12 +63,18 @@ func (s *Server) Run(leader string) error {
 
   if leader != "" {
     log.Println("Attempting to join leader:", leader)
+
+    if !s.raftServer.IsLogEmpty() {
+      log.Fatal("Cannot join with an existing log")
+    }
+
     if err := s.join(leader); err != nil {
       log.Fatal(err)
       panic(err)
     }
+    // It's the follower.
     s.leader = false
-  } else {
+  } else if s.raftServer.IsLogEmpty() {
     s.leader = true
     log.Println("Initializing new cluster : ", s.raftServer.Name(), s.connectionString())
     _, err := s.raftServer.Do(&raft.DefaultJoinCommand{
@@ -75,6 +84,9 @@ func (s *Server) Run(leader string) error {
     if err != nil {
       log.Fatal(err)
     }
+  } else {
+    log.Println("Recovered from log")
+    s.leader = false
   }
 
   log.Println("Initialize http server.")
@@ -130,20 +142,20 @@ func (s *Server) joinHandler(w http.ResponseWriter, req *http.Request) {
 
 func (s* Server) runBenchmark() {
   if s.leader == false {
+    // Only leader will propose commands.
     return
   }
-  return
-  time.Sleep(10000 * time.Millisecond)
-  fmt.Println("Run benchmark!")
+  fmt.Println("Starts benchmark:")
   // Execute the command against the Raft server.
-  stt := time.Now()
-  for i:=0; i < 10000; i++ {
+  st := time.Now()
+  for i:=0; i < s.numTxns; i++ {
     _, err := s.raftServer.Do(NewWriteCommand(string("1"), string("2")))
     if err != nil {
       fmt.Println("Error in raft", err)
     }
   }
-  fmt.Println("Duration : ", time.Since(stt))
+  duration := time.Since(st)
+  fmt.Println("Duration : ", duration)
 }
 
 // This is a hack around Gorilla mux not providing the correct net/http
