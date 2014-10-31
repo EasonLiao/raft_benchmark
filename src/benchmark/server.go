@@ -145,11 +145,11 @@ func (s* Server) runBenchmark() {
     // Only leader will propose commands.
     return
   }
-  fmt.Println("Starts benchmark:")
+  log.Println("Starts benchmark:")
   // Execute the command against the Raft server.
   st := time.Now()
   for i:=0; i < s.numTxns; i++ {
-    _, err := s.raftServer.Do(NewWriteCommand(string("1"), string("2")))
+    _, err := s.raftServer.Do(NewPutCommand(i, string("2")))
     if err != nil {
       fmt.Println("Error in raft", err)
     }

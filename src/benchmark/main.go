@@ -36,7 +36,7 @@ func main() {
   if err := os.MkdirAll(path, 0744); err != nil {
     log.Fatalf("Unable to create path: %v", err)
   }
-  raft.RegisterCommand(&WriteCommand{})
+  raft.RegisterCommand(&PutCommand{})
   server := New(path, host, port, numTxns, txnSize)
   server.Run(join)
 }
