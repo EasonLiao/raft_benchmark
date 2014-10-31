@@ -1,9 +1,9 @@
 package main
 
-
 // The key-value database.
 type DB struct {
   data  map[int]string
+  puts  int
 }
 
 // Creates a new database.
@@ -21,4 +21,5 @@ func (db *DB) Get(key int) string {
 // Sets the value for a given key.
 func (db *DB) Put(key int, value string) {
   db.data[key] = value
+  db.puts++
 }

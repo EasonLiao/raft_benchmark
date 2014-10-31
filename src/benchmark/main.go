@@ -16,6 +16,7 @@ var join string
 var numTxns int
 var txnSize int
 var numPeers int
+var showInterval int
 
 func init() {
   flag.StringVar(&host, "h", "localhost", "hostname")
@@ -24,11 +25,11 @@ func init() {
   flag.IntVar(&numTxns, "n", 100000, "number of transactions")
   flag.IntVar(&txnSize, "s", 128, "transaction size(bytes)")
   flag.IntVar(&numPeers, "np", 1, "number of peers in cluster")
+  flag.IntVar(&showInterval, "int", 3, "the intervals for showing the perf")
 }
 
 func main() {
   flag.Parse()
-  raft.SetLogLevel(raft.Debug)
 
   // Go uses pseudo random, need to init seed.
   rand.Seed(time.Now().UnixNano())

@@ -154,6 +154,10 @@ func (s* Server) runBenchmark() {
     // Waits for start message.
     <-s.chStart
   }
+
+  ticker := time.NewTicker(time.Second * 1)
+  go s.showPerf(ticker)
+
   log.Println("Starts benchmark:")
   // Execute the command against the Raft server.
   st := time.Now()
@@ -171,4 +175,14 @@ func (s* Server) runBenchmark() {
 // HandleFunc() interface.
 func (s *Server) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
   s.router.HandleFunc(pattern, handler)
+}
+
+func (s *Server) showPerf(ticker *time.Ticker) {
+  lastPuts := s.db.puts
+  for {
+    <-ticker.C
+    curPuts := s.db.puts
+    intvThroughput := (curPuts - lastPuts) / 1
+    fmt.Println("Timer : ", intvThroughput)
+  }
 }
