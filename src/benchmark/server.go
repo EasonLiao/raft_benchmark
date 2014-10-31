@@ -23,7 +23,6 @@ type Server struct {
   httpServer  *http.Server
   raftServer  raft.Server
   db          *DB
-  leader      bool
   numTxns     int
   txnSize     int
   numPeers    int
@@ -53,6 +52,7 @@ func (s *Server) connectionString() string {
 
 func (s *Server) Run(leader string) error {
   var err error
+  var isLeader bool = false
   s.name = fmt.Sprintf("%07x", rand.Int())[0:7]
   log.Printf("Initialize benchmark server: %s", s.name)
   if err = ioutil.WriteFile(filepath.Join(s.path, "name"), []byte(s.name), 0644); err != nil {
@@ -78,10 +78,7 @@ func (s *Server) Run(leader string) error {
       log.Fatal(err)
       panic(err)
     }
-    // It's the follower.
-    s.leader = false
   } else if s.raftServer.IsLogEmpty() {
-    s.leader = true
     log.Println("Initializing new cluster : ", s.raftServer.Name(), s.connectionString())
     _, err := s.raftServer.Do(&raft.DefaultJoinCommand{
       Name:             s.raftServer.Name(),
@@ -90,9 +87,9 @@ func (s *Server) Run(leader string) error {
     if err != nil {
       log.Fatal(err)
     }
+    isLeader = true
   } else {
     log.Println("Recovered from log")
-    s.leader = false
   }
 
   log.Println("Initialize http server.")
@@ -105,8 +102,9 @@ func (s *Server) Run(leader string) error {
   s.router.HandleFunc("/join", s.joinHandler).Methods("POST")
   log.Println("Listening at:", s.connectionString())
 
-  go s.runBenchmark()
-
+  if isLeader {
+    go s.runBenchmark()
+  }
   return s.httpServer.ListenAndServe()
 }
 
@@ -147,10 +145,6 @@ func (s *Server) joinHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s* Server) runBenchmark() {
-  if s.leader == false {
-    // Only leader will propose commands.
-    return
-  }
   if s.numPeers > 1 {
     log.Printf("Waits for cluster size changes to %d", s.numPeers)
     // Waits for start message.
