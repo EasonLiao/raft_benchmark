@@ -6,15 +6,17 @@ import (
 
 // This command writes a value to a key.
 type PutCommand struct {
-  Key   int `json:"key"`
-  Value string `json:"value"`
+  Key     int `json:"key"`
+  Value   string `json:"value"`
+  TimeSt  int64 `json: "timest"`
 }
 
 // Creates a new write command.
 func NewPutCommand(key int, value string) *PutCommand {
   return &PutCommand{
-    Key:   key,
-    Value: value,
+    Key:    key,
+    Value:  value,
+    TimeSt: GetTimeMs(),
   }
 }
 
@@ -26,6 +28,6 @@ func (c *PutCommand) CommandName() string {
 // Writes a value to a key.
 func (c *PutCommand) Apply(server raft.Server) (interface{}, error) {
   db := server.Context().(*DB)
-  db.Put(c.Key, c.Value)
+  db.Put(c.Key, c.Value, c.TimeSt)
   return nil, nil
 }

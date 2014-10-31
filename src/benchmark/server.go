@@ -29,22 +29,24 @@ type Server struct {
   chStart     chan string
   showInterv  int
   snapshot    int64
+  stateMemory int64
 }
 
 func New(path, host string, port, numTxns, txnSize, numPeers,
-         showInterv int, snapshot int64) *Server {
+         showInterv int, snapshot, stateMemory int64) *Server {
   s := &Server {
-        host:       host,
-        port:       port,
-        path:       path,
-        router:     mux.NewRouter(),
-        db:         NewDB(),
-        numTxns:    numTxns,
-        txnSize:    txnSize,
-        numPeers:   numPeers,
-        chStart:    make(chan string),
-        showInterv: showInterv,
-        snapshot:   snapshot,
+        host:         host,
+        port:         port,
+        path:         path,
+        router:       mux.NewRouter(),
+        db:           NewDB(),
+        numTxns:      numTxns,
+        txnSize:      txnSize,
+        numPeers:     numPeers,
+        chStart:      make(chan string),
+        showInterv:   showInterv,
+        snapshot:     snapshot,
+        stateMemory:  stateMemory,
   }
   return s
 }
@@ -104,6 +106,9 @@ func (s *Server) Run(leader string) error {
   s.router.HandleFunc("/", s.readHandler).Methods("GET")
   s.router.HandleFunc("/join", s.joinHandler).Methods("POST")
   log.Println("Listening at:", s.connectionString())
+
+  // Pre-fill the state machine to make it has specified memory usage.
+  s.initStateMachine()
 
   if isLeader {
     go s.runBenchmark()
@@ -180,12 +185,16 @@ func (s *Server) HandleFunc(pattern string, handler func(http.ResponseWriter, *h
 func (s *Server) showPerf(ticker *time.Ticker) {
   lastPuts := s.db.puts
   lastSnapshotPuts := s.db.puts
+  lastDelays :=  s.db.delays
   for {
     <-ticker.C
     curPuts := s.db.puts
+    curDelays := s.db.delays
     intvThroughput := (curPuts - lastPuts) / s.showInterv
-    fmt.Println("Throughput : ", intvThroughput)
+    fmt.Printf("Throughput : %d, avg delays : %d ms\n", intvThroughput,
+               int(curDelays - lastDelays) / intvThroughput)
     lastPuts = curPuts
+    lastDelays = curDelays
     if s.snapshot > 0 &&
        int64(curPuts - lastSnapshotPuts) * int64(s.txnSize) >= s.snapshot {
       log.Printf("Reaches threshold %d bytes, gona take the snapshot.", s.snapshot)
@@ -193,4 +202,9 @@ func (s *Server) showPerf(ticker *time.Ticker) {
       lastSnapshotPuts = curPuts
     }
   }
+}
+
+func (s *Server) initStateMachine() {
+  numKeys := int(s.stateMemory / int64(s.txnSize))
+  s.db.fill(numKeys, s.txnSize)
 }
