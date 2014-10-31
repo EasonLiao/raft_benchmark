@@ -15,6 +15,7 @@ var port int
 var join string
 var numTxns int
 var txnSize int
+var numPeers int
 
 func init() {
   flag.StringVar(&host, "h", "localhost", "hostname")
@@ -22,6 +23,7 @@ func init() {
   flag.IntVar(&port, "p", 4001, "port")
   flag.IntVar(&numTxns, "n", 100000, "number of transactions")
   flag.IntVar(&txnSize, "s", 128, "transaction size(bytes)")
+  flag.IntVar(&numPeers, "np", 1, "number of peers in cluster")
 }
 
 func main() {
@@ -37,6 +39,6 @@ func main() {
     log.Fatalf("Unable to create path: %v", err)
   }
   raft.RegisterCommand(&PutCommand{})
-  server := New(path, host, port, numTxns, txnSize)
+  server := New(path, host, port, numTxns, txnSize, numPeers)
   server.Run(join)
 }

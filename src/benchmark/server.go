@@ -26,9 +26,11 @@ type Server struct {
   leader      bool
   numTxns     int
   txnSize     int
+  numPeers    int
+  chStart     chan string
 }
 
-func New(path string, host string, port int, numTxns int, txnSize int) *Server {
+func New(path string, host string, port int, numTxns int, txnSize int, numPeers int) *Server {
   s := &Server {
         host:     host,
         port:     port,
@@ -37,6 +39,8 @@ func New(path string, host string, port int, numTxns int, txnSize int) *Server {
         db:       NewDB(),
         numTxns:  numTxns,
         txnSize:  txnSize,
+        numPeers: numPeers,
+        chStart:  make(chan string),
   }
   return s
 }
@@ -48,7 +52,7 @@ func (s *Server) connectionString() string {
 func (s *Server) Run(leader string) error {
   var err error
   s.name = fmt.Sprintf("%07x", rand.Int())[0:7]
-  log.Println("Initialize benchmark server: %s", s.name)
+  log.Printf("Initialize benchmark server: %s", s.name)
   if err = ioutil.WriteFile(filepath.Join(s.path, "name"), []byte(s.name), 0644); err != nil {
       panic(err)
   }
@@ -122,13 +126,10 @@ func (s *Server) join(leader string) error {
 }
 
 func (s *Server) readHandler(w http.ResponseWriter, req *http.Request) {
-  fmt.Println("read")
 }
 
 func (s *Server) joinHandler(w http.ResponseWriter, req *http.Request) {
-  fmt.Println("join", req)
   command := &raft.DefaultJoinCommand{}
-
   if err := json.NewDecoder(req.Body).Decode(&command); err != nil {
     http.Error(w, err.Error(), http.StatusInternalServerError)
     return
@@ -137,13 +138,23 @@ func (s *Server) joinHandler(w http.ResponseWriter, req *http.Request) {
     http.Error(w, err.Error(), http.StatusInternalServerError)
     return
   }
-  fmt.Println("Join suc!")
+  numMembers := s.raftServer.MemberCount()
+  if numMembers == s.numPeers {
+    // Gets enough servers join in.
+    s.chStart <- "start"
+  }
+  log.Printf("New server joined in, now cluster has %d servers.", numMembers)
 }
 
 func (s* Server) runBenchmark() {
   if s.leader == false {
     // Only leader will propose commands.
     return
+  }
+  if s.numPeers > 1 {
+    log.Printf("Waits for cluster size changes to %d", s.numPeers)
+    // Waits for start message.
+    <-s.chStart
   }
   log.Println("Starts benchmark:")
   // Execute the command against the Raft server.
