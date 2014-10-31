@@ -8,6 +8,7 @@ import (
   "github.com/goraft/raft"
   "github.com/gorilla/mux"
   "net/http"
+  "time"
 )
 
 type Server struct {
@@ -17,6 +18,8 @@ type Server struct {
   path        string
   router      *mux.Router
   httpServer  *http.Server
+  raftServer  raft.Server
+  db          *DB
 }
 
 func New(path string, host string, port int) *Server {
@@ -25,6 +28,7 @@ func New(path string, host string, port int) *Server {
         port:   port,
         path:   path,
         router: mux.NewRouter(),
+        db:     NewDB(),
   }
   fmt.Println("NewServer : ", s.connectionString())
   return s
@@ -35,7 +39,17 @@ func (s *Server) connectionString() string {
 }
 
 func (s *Server) Run(leader string) error {
+  var err error
   log.Println("Initialize benchmark server: %s", s.path)
+
+  // Initialize and start Raft server.
+  transporter := raft.NewHTTPTransporter("/raft", 200*time.Millisecond)
+  s.raftServer, err = raft.NewServer(s.name, s.path, transporter, nil, s.db, "")
+  if err != nil {
+    log.Fatal(err)
+  }
+  transporter.Install(s.raftServer, s)
+  s.raftServer.Start()
 
   if leader != "" {
     log.Println("Attempting to join leader:", leader)
@@ -53,6 +67,9 @@ func (s *Server) Run(leader string) error {
   s.router.HandleFunc("/", s.readHandler).Methods("GET")
   s.router.HandleFunc("/join", s.joinHandler).Methods("POST")
   log.Println("Listening at:", s.connectionString())
+
+  go s.runBenchmark()
+
   return s.httpServer.ListenAndServe()
 }
 
@@ -78,4 +95,17 @@ func (s *Server) readHandler(w http.ResponseWriter, req *http.Request) {
 
 func (s *Server) joinHandler(w http.ResponseWriter, req *http.Request) {
   fmt.Println("join")
+}
+
+func (s* Server) runBenchmark() {
+  fmt.Println("Run benchmark!!!")
+  value := string("12345")
+  // Execute the command against the Raft server.
+  s.raftServer.Do(NewPutCommand(0, value))
+}
+
+// This is a hack around Gorilla mux not providing the correct net/http
+// HandleFunc() interface.
+func (s *Server) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+  s.router.HandleFunc(pattern, handler)
 }
