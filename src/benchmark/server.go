@@ -28,9 +28,10 @@ type Server struct {
   txnSize     int
   numPeers    int
   chStart     chan string
+  showInterv  int
 }
 
-func New(path string, host string, port int, numTxns int, txnSize int, numPeers int) *Server {
+func New(path, host string, port, numTxns, txnSize, numPeers, showInterv int) *Server {
   s := &Server {
         host:     host,
         port:     port,
@@ -41,6 +42,7 @@ func New(path string, host string, port int, numTxns int, txnSize int, numPeers 
         txnSize:  txnSize,
         numPeers: numPeers,
         chStart:  make(chan string),
+        showInterv:  showInterv,
   }
   return s
 }
@@ -155,7 +157,7 @@ func (s* Server) runBenchmark() {
     <-s.chStart
   }
 
-  ticker := time.NewTicker(time.Second * 1)
+  ticker := time.NewTicker(time.Second * time.Duration(s.showInterv))
   go s.showPerf(ticker)
 
   log.Println("Starts benchmark:")
@@ -167,8 +169,9 @@ func (s* Server) runBenchmark() {
       fmt.Println("Error in raft", err)
     }
   }
-  duration := time.Since(st)
-  fmt.Println("Duration : ", duration)
+  duration := float32(time.Since(st)) / 1000000000
+  fmt.Printf("Duration : %f, throughput : %f\n", duration, float32(s.numTxns) / duration)
+  ticker.Stop()
 }
 
 // This is a hack around Gorilla mux not providing the correct net/http
@@ -182,7 +185,8 @@ func (s *Server) showPerf(ticker *time.Ticker) {
   for {
     <-ticker.C
     curPuts := s.db.puts
-    intvThroughput := (curPuts - lastPuts) / 1
-    fmt.Println("Timer : ", intvThroughput)
+    intvThroughput := (curPuts - lastPuts) / s.showInterv
+    fmt.Println("Throughput : ", intvThroughput)
+    lastPuts = curPuts
   }
 }

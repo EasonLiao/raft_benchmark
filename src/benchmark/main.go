@@ -40,6 +40,6 @@ func main() {
     log.Fatalf("Unable to create path: %v", err)
   }
   raft.RegisterCommand(&PutCommand{})
-  server := New(path, host, port, numTxns, txnSize, numPeers)
+  server := New(path, host, port, numTxns, txnSize, numPeers, showInterval)
   server.Run(join)
 }
