@@ -48,6 +48,7 @@ func New(path, host string, port, numTxns, txnSize, numPeers,
         snapshot:     snapshot,
         stateMemory:  stateMemory,
   }
+  s.db.server = s
   return s
 }
 
@@ -196,7 +197,6 @@ func (s *Server) asyncPuts(num int) {
 
 func (s *Server) showPerf(ticker *time.Ticker) {
   lastPuts := s.db.puts
-  lastSnapshotPuts := s.db.puts
   lastDelays :=  s.db.delays
   for {
     <-ticker.C
@@ -211,12 +211,6 @@ func (s *Server) showPerf(ticker *time.Ticker) {
                int(curDelays - lastDelays) / diff)
     lastPuts = curPuts
     lastDelays = curDelays
-    if s.snapshot > 0 &&
-       int64(curPuts - lastSnapshotPuts) * int64(s.txnSize) >= s.snapshot {
-      log.Printf("Reaches threshold %d bytes, gona take the snapshot.", s.snapshot)
-      go s.raftServer.TakeSnapshot()
-      lastSnapshotPuts = curPuts
-    }
   }
 }
 

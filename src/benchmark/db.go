@@ -14,6 +14,8 @@ type DB struct {
   delays  int64
   distribution map[int]int
   lock    sync.Mutex
+  server  *Server
+  lastSnapshotPuts int
 }
 
 // Creates a new database.
@@ -39,6 +41,12 @@ func (db *DB) Put(key int, value string, timeStamp int64) {
   delay := GetTimeMs() - timeStamp
   db.delays += delay
   db.distribution[int(delay) % 10] += 1
+  if db.server.snapshot > 0 &&
+     int64(db.puts- db.lastSnapshotPuts) * int64(db.server.txnSize) >= db.server.snapshot {
+     log.Println("snapshot")
+     go db.server.raftServer.TakeSnapshot()
+     db.lastSnapshotPuts = db.puts
+  }
 }
 
 func (db *DB) Save() ([]byte, error) {
