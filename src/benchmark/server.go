@@ -171,18 +171,24 @@ func (s* Server) runBenchmark() {
   log.Println("Starts benchmark:")
   // Execute the command against the Raft server.
   st := time.Now()
+
+  for i:=0; i < 1000; i++ {
+    go s.doPuts()
+  }
+  s.doPuts()
+
+  duration := float32(time.Since(st)) / 1000000000
+  fmt.Printf("Duration : %f, throughput : %f\n", duration, float32(s.numTxns) / duration)
+  ticker.Stop()
+}
+
+func (s* Server) doPuts() {
   for i:=0; i < s.numTxns; i++ {
-    for t:=0; t < 1000; t++ {
-      go s.raftServer.Do(NewPutCommand(t, string(make([]byte, s.txnSize, s.txnSize))))
-    }
     _, err := s.raftServer.Do(NewPutCommand(i, string(make([]byte, s.txnSize, s.txnSize))))
     if err != nil {
       fmt.Println("Error in raft", err)
     }
   }
-  duration := float32(time.Since(st)) / 1000000000
-  fmt.Printf("Duration : %f, throughput : %f\n", duration, float32(s.numTxns) / duration)
-  ticker.Stop()
 }
 
 // This is a hack around Gorilla mux not providing the correct net/http
