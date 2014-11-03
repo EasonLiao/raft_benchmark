@@ -66,6 +66,8 @@ func (s *Server) Run(leader string) error {
   // Initialize and start Raft server.
   transporter := raft.NewHTTPTransporter("/raft", 200*time.Millisecond)
   s.raftServer, err = raft.NewServer(s.name, s.path, transporter, s.db, s.db, "")
+  //s.raftServer.SetHeartbeatInterval(500 * time.Millisecond)
+
   if err != nil {
     log.Fatal(err)
   }
@@ -107,9 +109,9 @@ func (s *Server) Run(leader string) error {
   s.router.HandleFunc("/join", s.joinHandler).Methods("POST")
   log.Println("Listening at:", s.connectionString())
 
-  // Pre-fill the state machine to make it has specified memory usage.
   s.initStateMachine()
 
+  // Pre-fill the state machine to make it has specified memory usage.
   if isLeader {
     go s.runBenchmark()
   }
@@ -123,11 +125,14 @@ func (s *Server) join(leader string) error {
   }
   var b bytes.Buffer
   json.NewEncoder(&b).Encode(command)
+  fmt.Println("BEF JOIN!!")
   resp, err := http.Post(fmt.Sprintf("http://%s/join", leader), "application/json", &b)
+  fmt.Println("AFT JOIN!!")
   if err != nil {
     return err
   }
   resp.Body.Close()
+  fmt.Println("SUC!!")
   return nil
 }
 
@@ -166,6 +171,9 @@ func (s* Server) runBenchmark() {
   // Execute the command against the Raft server.
   st := time.Now()
   for i:=0; i < s.numTxns; i++ {
+    for t:=0; t < 1000; t++ {
+      go s.raftServer.Do(NewPutCommand(t, string(make([]byte, s.txnSize, s.txnSize))))
+    }
     _, err := s.raftServer.Do(NewPutCommand(i, string(make([]byte, s.txnSize, s.txnSize))))
     if err != nil {
       fmt.Println("Error in raft", err)
@@ -182,6 +190,10 @@ func (s *Server) HandleFunc(pattern string, handler func(http.ResponseWriter, *h
   s.router.HandleFunc(pattern, handler)
 }
 
+func (s *Server) asyncPuts(num int) {
+
+}
+
 func (s *Server) showPerf(ticker *time.Ticker) {
   lastPuts := s.db.puts
   lastSnapshotPuts := s.db.puts
@@ -190,15 +202,19 @@ func (s *Server) showPerf(ticker *time.Ticker) {
     <-ticker.C
     curPuts := s.db.puts
     curDelays := s.db.delays
-    intvThroughput := (curPuts - lastPuts) / s.showInterv
-    fmt.Printf("Throughput : %d, avg delays : %d ms\n", intvThroughput,
-               int(curDelays - lastDelays) / intvThroughput)
+    diff := curPuts - lastPuts
+    intvThroughput := diff / s.showInterv
+    if diff == 0 {
+      diff = 1
+    }
+    fmt.Printf("throughput %d, delay %d ms\n", intvThroughput,
+               int(curDelays - lastDelays) / diff)
     lastPuts = curPuts
     lastDelays = curDelays
     if s.snapshot > 0 &&
        int64(curPuts - lastSnapshotPuts) * int64(s.txnSize) >= s.snapshot {
       log.Printf("Reaches threshold %d bytes, gona take the snapshot.", s.snapshot)
-      s.raftServer.TakeSnapshot()
+      go s.raftServer.TakeSnapshot()
       lastSnapshotPuts = curPuts
     }
   }

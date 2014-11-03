@@ -4,6 +4,7 @@ import (
   "bytes"
   "encoding/gob"
   "log"
+  "sync"
 )
 
 // The key-value database.
@@ -11,12 +12,15 @@ type DB struct {
   data    map[int]string
   puts    int
   delays  int64
+  distribution map[int]int
+  lock    sync.Mutex
 }
 
 // Creates a new database.
 func NewDB() *DB {
   return &DB{
     data: make(map[int]string),
+    distribution: make(map[int]int),
   }
 }
 
@@ -27,12 +31,21 @@ func (db *DB) Get(key int) string {
 
 // Sets the value for a given key.
 func (db *DB) Put(key int, value string, timeStamp int64) {
-  db.data[key] = value
+  db.lock.Lock()
+  defer db.lock.Unlock()
+
+  db.data[key % len(db.data)] = value
   db.puts++
-  db.delays += GetTimeMs() - timeStamp
+  delay := GetTimeMs() - timeStamp
+  db.delays += delay
+  db.distribution[int(delay) % 10] += 1
 }
 
 func (db *DB) Save() ([]byte, error) {
+  db.lock.Lock()
+  defer db.lock.Unlock()
+
+  log.Println("Start Snapshot")
   b := new(bytes.Buffer)
   e := gob.NewEncoder(b)
   // Encoding the map
